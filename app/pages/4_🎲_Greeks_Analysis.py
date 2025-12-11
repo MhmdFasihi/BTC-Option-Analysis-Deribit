@@ -44,7 +44,12 @@ if f"{selected_currency}_data" not in st.session_state:
     st.stop()
 
 data = st.session_state[f"{selected_currency}_data"]
-spot_price = data['index_price'].iloc[-1]
+
+# Get spot price safely
+if 'index_price' in data.columns and not data['index_price'].empty:
+    spot_price = data['index_price'].dropna().iloc[-1]
+else:
+    spot_price = data['strike_price'].median()  # Fallback to median strike
 
 # Tabs for different views
 tab1, tab2, tab3, tab4, tab5 = st.tabs([

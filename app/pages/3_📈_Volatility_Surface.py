@@ -42,7 +42,12 @@ if f"{selected_currency}_data" not in st.session_state:
     st.stop()
 
 data = st.session_state[f"{selected_currency}_data"]
-spot_price = data['index_price'].iloc[-1]
+
+# Get spot price safely
+if 'index_price' in data.columns and not data['index_price'].empty:
+    spot_price = data['index_price'].dropna().iloc[-1]
+else:
+    spot_price = data['strike_price'].median()  # Fallback to median strike
 
 # Tabs for different views
 tab1, tab2, tab3, tab4 = st.tabs([
@@ -191,7 +196,7 @@ with tab2:
         help="Choose maturity ranges to display"
     )
 
-    # Create maturity bins
+    # Create maturity bins (work on copy to avoid modifying session state)
     def assign_bucket(ttm):
         if ttm <= 7:
             return "0-7"
@@ -208,12 +213,18 @@ with tab2:
         else:
             return "180+"
 
-    data['ttm_bucket'] = data['time_to_maturity'].apply(assign_bucket)
+    # Work on a copy to avoid modifying session state
+    skew_data = data.copy()
+    skew_data['ttm_bucket'] = skew_data['time_to_maturity'].apply(assign_bucket)
 
-    # Filter by selected buckets
-    filtered_data = data[data['ttm_bucket'].isin(maturity_buckets)].copy()
+    # Filter by selected buckets and valid IV
+    filtered_data = skew_data[
+        (skew_data['ttm_bucket'].isin(maturity_buckets)) &
+        (skew_data['iv'].notna()) &
+        (skew_data['iv'] > 0)
+    ].copy()
 
-    if not filtered_data.empty:
+    if not filtered_data.empty and len(maturity_buckets) > 0:
         # Create skew plots
         fig_skew = make_subplots(
             rows=1, cols=2,
@@ -334,7 +345,10 @@ with tab2:
             - ATM vs OTM spreads: Premium for tail risk
             """)
     else:
-        st.warning("No data available for selected maturity ranges")
+        if len(maturity_buckets) == 0:
+            st.info("📌 Please select at least one maturity range above")
+        else:
+            st.warning(f"No data available for selected maturity ranges: {', '.join(maturity_buckets)}")
 
 # === TAB 3: TERM STRUCTURE ===
 with tab3:

@@ -45,8 +45,13 @@ data = st.session_state[f"{selected_currency}_data"]
 # === MARKET SUMMARY METRICS ===
 st.subheader(f"{selected_currency} Market Summary")
 
+# Get spot price safely
+if 'index_price' in data.columns and not data['index_price'].empty:
+    spot_price = data['index_price'].dropna().iloc[-1]
+else:
+    spot_price = data['strike_price'].median()  # Fallback to median strike
+
 # Calculate key metrics
-spot_price = data['index_price'].iloc[-1]
 total_volume_btc = data['volume_btc'].sum()
 total_volume_usd = data['volume_usd'].sum()
 total_contracts = data['contracts'].sum()

@@ -292,11 +292,16 @@ class PortfolioGreeksAggregator:
         if df.empty or 'delta' not in df.columns:
             return PortfolioGreeks(0, 0, 0, 0, 0, 0, 0, 0, 0, 0)
 
-        # Aggregate Greeks
-        total_delta = df['delta'].sum()
-        total_gamma = df['gamma'].sum()
-        total_vega = df['vega'].sum()
-        total_theta = df['theta'].sum()
+        # Validate spot_price
+        if spot_price is None or np.isnan(spot_price) or spot_price <= 0:
+            # Use median strike as fallback
+            spot_price = df['strike_price'].median() if 'strike_price' in df.columns else 1.0
+
+        # Aggregate Greeks (handle NaN values)
+        total_delta = df['delta'].fillna(0).sum()
+        total_gamma = df['gamma'].fillna(0).sum()
+        total_vega = df['vega'].fillna(0).sum()
+        total_theta = df['theta'].fillna(0).sum()
 
         # Dollar exposures
         delta_dollars = total_delta * spot_price

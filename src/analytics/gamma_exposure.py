@@ -67,7 +67,19 @@ class GammaExposureAnalyzer:
         """
         self.data = data
         self.currency = currency
-        self.spot_price = data['index_price'].iloc[-1] if not data.empty else 0
+
+        # Get spot price safely with fallback
+        if not data.empty:
+            if 'index_price' in data.columns and not data['index_price'].empty:
+                self.spot_price = data['index_price'].dropna().iloc[-1]
+            elif 'strike_price' in data.columns:
+                self.spot_price = data['strike_price'].median()
+            else:
+                self.spot_price = 0
+                logger.warning(f"No valid price data for {currency}")
+        else:
+            self.spot_price = 0
+            logger.warning(f"Empty data provided for {currency} GEX analysis")
 
         if data.empty:
             logger.warning(f"Empty data provided for {currency} GEX analysis")
@@ -112,9 +124,17 @@ class GammaExposureAnalyzer:
                 total_volume = group['volume_btc'].sum()
                 avg_gamma = group['gamma'].mean()
 
+                # Skip if invalid data
+                if pd.isna(avg_gamma) or pd.isna(total_volume) or not np.isfinite(avg_gamma):
+                    continue
+
                 # Calculate GEX
                 # Sign convention: calls positive, puts negative
                 gex = sign * avg_gamma * total_volume * self.spot_price
+
+                # Skip if GEX is invalid
+                if not np.isfinite(gex):
+                    continue
 
                 gex_data.append({
                     'strike_price': strike,
@@ -122,7 +142,7 @@ class GammaExposureAnalyzer:
                     'gex': gex,
                     'volume_btc': total_volume,
                     'avg_gamma': avg_gamma,
-                    'distance_from_spot_pct': ((strike - self.spot_price) / self.spot_price) * 100
+                    'distance_from_spot_pct': ((strike - self.spot_price) / self.spot_price) * 100 if self.spot_price > 0 else 0
                 })
 
         gex_df = pd.DataFrame(gex_data)

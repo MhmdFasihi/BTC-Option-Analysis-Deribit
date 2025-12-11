@@ -47,7 +47,11 @@ gex_df = st.session_state.get(f"{selected_currency}_gex", pd.DataFrame())
 gex_analyzer = st.session_state.get(f"{selected_currency}_gex_analyzer")
 squeeze_indicators = st.session_state.get(f"{selected_currency}_squeeze")
 
-spot_price = data['index_price'].iloc[-1]
+# Get spot price safely
+if 'index_price' in data.columns and not data['index_price'].empty:
+    spot_price = data['index_price'].dropna().iloc[-1]
+else:
+    spot_price = data['strike_price'].median()  # Fallback to median strike
 
 # Tabs for different views
 tab1, tab2, tab3, tab4 = st.tabs([
