@@ -277,12 +277,40 @@ if run_analysis and currencies and start_date < end_date:
                     st.warning(f"⚠️ No data available for {currency}")
                     continue
 
-                # Calculate Greeks
-                enhanced_df = greeks_calculator.calculate_greeks_dataframe(raw_df)
+                # CRITICAL: Filter out expired options
+                # Only analyze options that haven't expired yet
+                current_time = pd.to_datetime(raw_df['date_time'].max())
+                raw_df['maturity_date'] = pd.to_datetime(raw_df['maturity_date'])
+
+                # Separate active and expired options
+                active_df = raw_df[raw_df['maturity_date'] > current_time].copy()
+                expired_df = raw_df[raw_df['maturity_date'] <= current_time].copy()
+
+                total_trades = len(raw_df)
+                active_trades = len(active_df)
+                expired_trades = len(expired_df)
+
+                st.info(f"""
+                **{currency} Options Classification:**
+                - Total trades: {total_trades:,}
+                - Active (non-expired): {active_trades:,} ({active_trades/total_trades*100:.1f}%)
+                - Expired: {expired_trades:,} ({expired_trades/total_trades*100:.1f}%)
+
+                ✅ Using **ONLY active options** for Greeks and GEX
+                """)
+
+                if active_df.empty:
+                    st.error(f"❌ No active options found for {currency}. All options have expired.")
+                    continue
+
+                # Calculate Greeks ONLY on active (non-expired) options
+                enhanced_df = greeks_calculator.calculate_greeks_dataframe(active_df)
                 processed_data[currency] = enhanced_df
 
-                # Store in session state
+                # Store both active and full dataset
                 st.session_state[f"{currency}_data"] = enhanced_df
+                st.session_state[f"{currency}_data_full"] = raw_df  # Keep for historical analysis
+                st.session_state[f"{currency}_expired_count"] = expired_trades
 
             # Step 4: Calculate Gamma Exposure
             status_text.text("⚡ Calculating Gamma Exposure...")

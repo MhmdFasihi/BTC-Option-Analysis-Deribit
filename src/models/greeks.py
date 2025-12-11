@@ -87,17 +87,24 @@ class EnhancedGreeksCalculator:
         S = params.spot_price
         K = params.strike_price
         T = max(params.time_to_maturity, 1e-10)  # Avoid division by zero
-        sigma = params.volatility
+        sigma = max(params.volatility, 1e-10)  # Avoid division by zero
         r = params.risk_free_rate
+
+        # Handle edge cases
+        if K <= 0 or S <= 0:
+            # Return zero Greeks for invalid strikes
+            return Greeks(delta=0, gamma=0, vega=0, theta=0, rho=0)
 
         if params.pricing_model == PricingModel.BLACK_76:
             # Black-76: Use forward price, no discounting
             # For crypto, F ≈ S (no cost of carry)
             F = S
-            d1 = (np.log(F / K) + 0.5 * sigma**2 * T) / (sigma * np.sqrt(T))
+            with np.errstate(divide='ignore', invalid='ignore'):
+                d1 = (np.log(F / K) + 0.5 * sigma**2 * T) / (sigma * np.sqrt(T))
         else:
             # Standard Black-Scholes
-            d1 = (np.log(S / K) + (r + 0.5 * sigma**2) * T) / (sigma * np.sqrt(T))
+            with np.errstate(divide='ignore', invalid='ignore'):
+                d1 = (np.log(S / K) + (r + 0.5 * sigma**2) * T) / (sigma * np.sqrt(T))
 
         d2 = d1 - sigma * np.sqrt(T)
 
@@ -138,7 +145,10 @@ class EnhancedGreeksCalculator:
             delta = Nd1 - 1.0  # or -N(-d1)
 
         # GAMMA (same for calls and puts)
-        gamma = nd1 / (S * sigma * np.sqrt(T))
+        with np.errstate(divide='ignore', invalid='ignore'):
+            gamma = nd1 / (S * sigma * np.sqrt(T))
+            if not np.isfinite(gamma):
+                gamma = 0.0
 
         # VEGA (same for calls and puts, per 1% change in vol)
         vega = S * np.sqrt(T) * nd1 * 0.01
