@@ -66,7 +66,27 @@ with tab1:
     st.subheader(f"{selected_currency} Gamma Exposure Overview")
 
     if gex_df.empty:
-        st.warning("No gamma exposure data available")
+        st.warning("⚠️ No gamma exposure data available")
+        st.info("""
+        **Possible reasons:**
+        - GEX calculation returned empty results
+        - All gamma values were NaN or infinite
+        - No valid strike/volume data
+
+        **Debug Info:**
+        - Data rows: {data_rows}
+        - Gamma column exists: {has_gamma}
+        - Volume column exists: {has_volume}
+        """.format(
+            data_rows=len(data),
+            has_gamma='gamma' in data.columns,
+            has_volume='volume_btc' in data.columns
+        ))
+
+        # Try to show some sample data for debugging
+        if not data.empty:
+            st.write("**Sample Data (first 5 rows):**")
+            st.dataframe(data[['strike_price', 'option_type', 'gamma', 'volume_btc']].head())
     else:
         # Summary metrics
         calls_gex = gex_df[gex_df['option_type'] == 'call']

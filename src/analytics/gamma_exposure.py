@@ -103,11 +103,24 @@ class GammaExposureAnalyzer:
         Returns:
             DataFrame with GEX by strike
         """
-        if self.data.empty or 'gamma' not in self.data.columns:
-            logger.warning("Cannot calculate GEX - missing data or gamma")
+        if self.data.empty:
+            logger.warning(f"Cannot calculate GEX for {self.currency} - empty data")
+            return pd.DataFrame()
+
+        if 'gamma' not in self.data.columns:
+            logger.warning(f"Cannot calculate GEX for {self.currency} - gamma column missing")
+            return pd.DataFrame()
+
+        if 'volume_btc' not in self.data.columns:
+            logger.warning(f"Cannot calculate GEX for {self.currency} - volume_btc column missing")
+            return pd.DataFrame()
+
+        if self.spot_price <= 0:
+            logger.warning(f"Cannot calculate GEX for {self.currency} - invalid spot price: {self.spot_price}")
             return pd.DataFrame()
 
         gex_data = []
+        skipped_strikes = 0
 
         # Calculate GEX for calls and puts separately
         for option_type, sign in [('call', 1), ('put', -1)]:
@@ -120,45 +133,64 @@ class GammaExposureAnalyzer:
             strike_groups = type_data.groupby('strike_price')
 
             for strike, group in strike_groups:
-                # Volume-weighted average gamma
-                total_volume = group['volume_btc'].sum()
+                # Use contracts (not volume_btc) for GEX calculation
+                # volume_btc is price * contracts, we need just contracts
+                total_contracts = group['contracts'].sum() if 'contracts' in group.columns else 0
                 avg_gamma = group['gamma'].mean()
 
                 # Skip if invalid data
-                if pd.isna(avg_gamma) or pd.isna(total_volume) or not np.isfinite(avg_gamma):
+                if pd.isna(avg_gamma) or pd.isna(total_contracts) or not np.isfinite(avg_gamma):
+                    skipped_strikes += 1
+                    continue
+
+                if total_contracts == 0:
+                    skipped_strikes += 1
                     continue
 
                 # Calculate GEX
                 # Sign convention: calls positive, puts negative
-                gex = sign * avg_gamma * total_volume * self.spot_price
+                # GEX = Gamma * Contracts * Spot Price
+                gex = sign * avg_gamma * total_contracts * self.spot_price
 
                 # Skip if GEX is invalid
                 if not np.isfinite(gex):
+                    skipped_strikes += 1
                     continue
 
                 gex_data.append({
                     'strike_price': strike,
                     'option_type': option_type,
                     'gex': gex,
-                    'volume_btc': total_volume,
+                    'contracts': total_contracts,
+                    'volume_btc': group['volume_btc'].sum() if 'volume_btc' in group.columns else 0,
                     'avg_gamma': avg_gamma,
                     'distance_from_spot_pct': ((strike - self.spot_price) / self.spot_price) * 100 if self.spot_price > 0 else 0
                 })
 
         gex_df = pd.DataFrame(gex_data)
 
+        if skipped_strikes > 0:
+            logger.info(f"Skipped {skipped_strikes} strikes with invalid gamma/volume data for {self.currency}")
+
+        if gex_df.empty:
+            logger.warning(f"All strikes filtered out for {self.currency} GEX calculation")
+            return pd.DataFrame()
+
         if not gex_df.empty:
             # Calculate net GEX by strike (combining calls and puts)
-            net_gex = gex_df.groupby('strike_price')['gex'].sum().reset_index()
+            net_gex = gex_df.groupby('strike_price').agg({
+                'gex': 'sum',
+                'contracts': 'sum',
+                'volume_btc': 'sum'
+            }).reset_index()
             net_gex['option_type'] = 'net'
-            net_gex['volume_btc'] = 0
             net_gex['avg_gamma'] = 0
             net_gex['distance_from_spot_pct'] = ((net_gex['strike_price'] - self.spot_price) / self.spot_price) * 100
 
             # Combine with individual call/put data
             gex_df = pd.concat([gex_df, net_gex], ignore_index=True)
 
-            logger.info(f"Calculated GEX for {len(gex_df[gex_df['option_type']=='net'])} strikes")
+            logger.info(f"Calculated GEX for {len(net_gex)} strikes ({len(gex_df)} total rows) for {self.currency}")
 
         return gex_df
 
