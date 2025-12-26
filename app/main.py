@@ -160,7 +160,7 @@ with st.sidebar:
     run_analysis = st.button(
         "🚀 Run Analysis",
         type="primary",
-        use_container_width=True,
+        width="stretch",
         help="Fetch data and run complete analysis"
     )
 
@@ -305,12 +305,41 @@ if run_analysis and currencies and start_date < end_date:
 
                 # Calculate Greeks ONLY on active (non-expired) options
                 enhanced_df = greeks_calculator.calculate_greeks_dataframe(active_df)
-                processed_data[currency] = enhanced_df
 
-                # Store both active and full dataset
+                # CRITICAL: Statistical validation of Greeks using quantitative methods
+                # Check for outliers and data quality
+                greeks_cols = ['delta', 'gamma', 'vega', 'theta']
+                outlier_stats = {}
+
+                for col in greeks_cols:
+                    if col in enhanced_df.columns:
+                        values = enhanced_df[col].dropna()
+                        if len(values) > 0:
+                            # Calculate statistics
+                            Q1 = values.quantile(0.25)
+                            Q3 = values.quantile(0.75)
+                            IQR = Q3 - Q1
+
+                            # Count outliers (using 3*IQR method)
+                            lower_bound = Q1 - 3 * IQR
+                            upper_bound = Q3 + 3 * IQR
+                            outliers = ((values < lower_bound) | (values > upper_bound)).sum()
+                            outlier_pct = (outliers / len(values) * 100) if len(values) > 0 else 0
+
+                            outlier_stats[col] = {
+                                'outliers': outliers,
+                                'percentage': outlier_pct,
+                                'total': len(values),
+                                'nan_count': enhanced_df[col].isna().sum(),
+                                'inf_count': (~np.isfinite(enhanced_df[col])).sum()
+                            }
+
+                # Store validated data
+                processed_data[currency] = enhanced_df
                 st.session_state[f"{currency}_data"] = enhanced_df
-                st.session_state[f"{currency}_data_full"] = raw_df  # Keep for historical analysis
+                st.session_state[f"{currency}_data_full"] = raw_df
                 st.session_state[f"{currency}_expired_count"] = expired_trades
+                st.session_state[f"{currency}_outlier_stats"] = outlier_stats
 
             # Step 4: Calculate Gamma Exposure
             status_text.text("⚡ Calculating Gamma Exposure...")
@@ -348,6 +377,26 @@ if run_analysis and currencies and start_date < end_date:
             - Greeks calculated: ✓
             - Gamma Exposure analyzed: ✓
             """)
+
+            # Display data quality statistics
+            st.markdown("### 📊 Data Quality Report")
+
+            for currency in currencies:
+                if f"{currency}_outlier_stats" in st.session_state:
+                    outlier_stats = st.session_state[f"{currency}_outlier_stats"]
+
+                    with st.expander(f"📈 {currency} Greeks Validation Statistics"):
+                        cols = st.columns(4)
+
+                        for idx, (greek, stats) in enumerate(outlier_stats.items()):
+                            with cols[idx]:
+                                st.markdown(f"**{greek.capitalize()}**")
+                                st.metric("Valid Data", f"{stats['total']:,}")
+                                st.metric("Outliers", f"{stats['outliers']} ({stats['percentage']:.1f}%)")
+                                if stats['nan_count'] > 0:
+                                    st.warning(f"⚠️ {stats['nan_count']} NaN values")
+                                if stats['inf_count'] > 0:
+                                    st.error(f"❌ {stats['inf_count']} Inf values")
 
             # Display gamma squeeze warnings if any
             for currency in currencies:

@@ -239,7 +239,7 @@ with tab1:
         fig.update_yaxes(title_text="Gamma Exposure ($)", row=1, col=1)
         fig.update_yaxes(title_text="Net GEX ($)", row=2, col=1)
 
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, width="stretch")
 
         # Explanation
         with st.expander("📖 Understanding Gamma Exposure"):
@@ -305,7 +305,7 @@ with tab2:
                     'Net GEX ($)': '${:,.0f}',
                     'Distance from Spot (%)': '{:+.2f}%'
                 }).background_gradient(subset=['Net GEX ($)'], cmap='RdYlGn'),
-                use_container_width=True
+                width="stretch"
             )
 
             # Download button
@@ -397,7 +397,7 @@ with tab3:
             font={'color': "white", 'family': "Arial"}
         )
 
-        st.plotly_chart(fig_gauge, use_container_width=True)
+        st.plotly_chart(fig_gauge, width="stretch")
 
         # Explanation
         with st.expander("📖 What is a Gamma Squeeze?"):
@@ -455,11 +455,11 @@ with tab4:
                     'Price Change (%)': '{:+.0f}%',
                     'New Price': '${:,.0f}',
                     'GEX at Level': '${:,.0f}'
-                }).applymap(
+                }).map(
                     lambda x: 'background-color: #d4edda' if x == 'Stabilizing' else ('background-color: #f8d7da' if x == 'Destabilizing' else ''),
                     subset=['Effect']
                 ),
-                use_container_width=True
+                width="stretch"
             )
 
         # Pin risk analysis

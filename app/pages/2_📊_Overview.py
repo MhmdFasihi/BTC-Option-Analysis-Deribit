@@ -200,7 +200,7 @@ fig_volume.update_xaxes(title_text="Date", row=2, col=1)
 fig_volume.update_yaxes(title_text="Volume (BTC)", row=1, col=1)
 fig_volume.update_yaxes(title_text="C/P Ratio", row=2, col=1)
 
-st.plotly_chart(fig_volume, use_container_width=True)
+st.plotly_chart(fig_volume, width="stretch")
 
 # === MOST ACTIVE STRIKES ===
 st.markdown("---")
@@ -238,7 +238,7 @@ with col1:
                 'Avg IV': '{:.2%}',
                 'From Spot (%)': '{:+.2f}%'
             }).background_gradient(subset=[f'Volume ({selected_currency})'], cmap='Greens'),
-            use_container_width=True,
+            width="stretch",
             height=400
         )
     else:
@@ -263,7 +263,7 @@ with col2:
                 'Avg IV': '{:.2%}',
                 'From Spot (%)': '{:+.2f}%'
             }).background_gradient(subset=[f'Volume ({selected_currency})'], cmap='Reds'),
-            use_container_width=True,
+            width="stretch",
             height=400
         )
     else:
@@ -344,7 +344,7 @@ fig_maturity.update_xaxes(title_text="Maturity Date", row=1, col=2)
 fig_maturity.update_yaxes(title_text="Volume (BTC)", row=1, col=1)
 fig_maturity.update_yaxes(title_text="Number of Strikes", row=1, col=2)
 
-st.plotly_chart(fig_maturity, use_container_width=True)
+st.plotly_chart(fig_maturity, width="stretch")
 
 # === TIME TO MATURITY DISTRIBUTION ===
 st.markdown("---")
@@ -357,7 +357,7 @@ data['ttm_bins'] = pd.cut(
     labels=['0-7d', '7-14d', '14-30d', '30-60d', '60-90d', '90-180d', '180-365d']
 )
 
-ttm_volume = data.groupby(['ttm_bins', 'option_type'])['volume_btc'].sum().reset_index()
+ttm_volume = data.groupby(['ttm_bins', 'option_type'], observed=True)['volume_btc'].sum().reset_index()
 
 fig_ttm = go.Figure()
 
@@ -388,7 +388,7 @@ fig_ttm.update_layout(
     paper_bgcolor='rgba(0,0,0,0)'
 )
 
-st.plotly_chart(fig_ttm, use_container_width=True)
+st.plotly_chart(fig_ttm, width="stretch")
 
 # === MONEYNESS ANALYSIS ===
 st.markdown("---")
@@ -401,7 +401,7 @@ data['moneyness_bins'] = pd.cut(
     labels=['Deep OTM', 'OTM', 'Slightly OTM', 'ATM', 'Slightly ITM', 'ITM', 'Deep ITM', 'Very Deep ITM']
 )
 
-moneyness_volume = data.groupby(['moneyness_bins', 'option_type'])['volume_btc'].sum().reset_index()
+moneyness_volume = data.groupby(['moneyness_bins', 'option_type'], observed=True)['volume_btc'].sum().reset_index()
 
 fig_moneyness = go.Figure()
 
@@ -432,7 +432,7 @@ fig_moneyness.update_layout(
     paper_bgcolor='rgba(0,0,0,0)'
 )
 
-st.plotly_chart(fig_moneyness, use_container_width=True)
+st.plotly_chart(fig_moneyness, width="stretch")
 
 # Explanation
 with st.expander("📖 Understanding Market Overview Metrics"):

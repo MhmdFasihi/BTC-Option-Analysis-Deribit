@@ -143,7 +143,7 @@ with tab1:
             'Puts': '{:.4f}',
             'Net': '{:.4f}'
         }).background_gradient(subset=['Net'], cmap='RdYlGn'),
-        use_container_width=True
+        width="stretch"
     )
 
     # Greeks by maturity
@@ -199,7 +199,7 @@ with tab1:
         paper_bgcolor='rgba(0,0,0,0)'
     )
 
-    st.plotly_chart(fig_maturity, use_container_width=True)
+    st.plotly_chart(fig_maturity, width="stretch")
 
 # === TAB 2: DELTA ANALYSIS ===
 with tab2:
@@ -252,7 +252,7 @@ with tab2:
             paper_bgcolor='rgba(0,0,0,0)'
         )
 
-        st.plotly_chart(fig_delta, use_container_width=True)
+        st.plotly_chart(fig_delta, width="stretch")
 
         # Delta vs Moneyness
         st.markdown("---")
@@ -262,7 +262,7 @@ with tab2:
 
         # Group by moneyness bins
         moneyness_bins = pd.cut(delta_data['moneyness'], bins=20)
-        delta_by_moneyness = delta_data.groupby(moneyness_bins)['delta'].mean()
+        delta_by_moneyness = delta_data.groupby(moneyness_bins, observed=True)['delta'].mean()
 
         fig_delta_moneyness.add_trace(
             go.Scatter(
@@ -299,7 +299,7 @@ with tab2:
             paper_bgcolor='rgba(0,0,0,0)'
         )
 
-        st.plotly_chart(fig_delta_moneyness, use_container_width=True)
+        st.plotly_chart(fig_delta_moneyness, width="stretch")
 
         with st.expander("📖 Understanding Delta"):
             st.markdown("""
@@ -372,7 +372,7 @@ with tab3:
             paper_bgcolor='rgba(0,0,0,0)'
         )
 
-        st.plotly_chart(fig_gamma, use_container_width=True)
+        st.plotly_chart(fig_gamma, width="stretch")
 
         # Gamma by strike (near ATM)
         st.markdown("---")
@@ -420,7 +420,7 @@ with tab3:
                 paper_bgcolor='rgba(0,0,0,0)'
             )
 
-            st.plotly_chart(fig_gamma_strike, use_container_width=True)
+            st.plotly_chart(fig_gamma_strike, width="stretch")
 
         with st.expander("📖 Understanding Gamma"):
             st.markdown("""
@@ -491,7 +491,7 @@ with tab4:
             paper_bgcolor='rgba(0,0,0,0)'
         )
 
-        st.plotly_chart(fig_vega, use_container_width=True)
+        st.plotly_chart(fig_vega, width="stretch")
 
         # Vega vs IV
         st.markdown("---")
@@ -529,7 +529,7 @@ with tab4:
             paper_bgcolor='rgba(0,0,0,0)'
         )
 
-        st.plotly_chart(fig_vega_iv, use_container_width=True)
+        st.plotly_chart(fig_vega_iv, width="stretch")
 
         with st.expander("📖 Understanding Vega"):
             st.markdown("""
@@ -598,7 +598,7 @@ with tab5:
             paper_bgcolor='rgba(0,0,0,0)'
         )
 
-        st.plotly_chart(fig_theta, use_container_width=True)
+        st.plotly_chart(fig_theta, width="stretch")
 
         # Theta decay curve
         st.markdown("---")
@@ -636,7 +636,7 @@ with tab5:
             paper_bgcolor='rgba(0,0,0,0)'
         )
 
-        st.plotly_chart(fig_theta_curve, use_container_width=True)
+        st.plotly_chart(fig_theta_curve, width="stretch")
 
         with st.expander("📖 Understanding Theta"):
             st.markdown("""

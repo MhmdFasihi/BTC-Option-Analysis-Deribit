@@ -71,7 +71,7 @@ with tab1:
     with col2:
         surface_metric = st.selectbox(
             "Surface Metric",
-            ["Implied Volatility", "Vega", "Gamma"],
+            ["Implied Volatility", "Delta", "Gamma", "Vega", "Theta"],
             help="Choose which metric to visualize on surface"
         )
 
@@ -81,13 +81,59 @@ with tab1:
     else:
         surface_data = data[data['option_type'] == option_type_3d].copy()
 
-    # Prepare data for surface
+    # Prepare data for surface with validation
     surface_data = surface_data[
         (surface_data['time_to_maturity'] > 0) &
-        (surface_data['iv'] > 0)
+        (surface_data['iv'] > 0) &
+        (surface_data['iv'].notna())
     ].copy()
 
     if not surface_data.empty:
+        # Select metric
+        metric_map = {
+            "Implied Volatility": 'iv',
+            "Delta": 'delta',
+            "Gamma": 'gamma',
+            "Vega": 'vega',
+            "Theta": 'theta'
+        }
+        metric_col = metric_map[surface_metric]
+
+        # CRITICAL: Outlier detection using IQR method (quantitative approach)
+        # Remove extreme outliers that would skew the surface
+        if metric_col in surface_data.columns:
+            metric_values = surface_data[metric_col].dropna()
+
+            if len(metric_values) > 10:  # Need enough data points
+                Q1 = metric_values.quantile(0.25)
+                Q3 = metric_values.quantile(0.75)
+                IQR = Q3 - Q1
+
+                # Use 3*IQR for outlier detection (less aggressive than 1.5*IQR)
+                lower_bound = Q1 - 3 * IQR
+                upper_bound = Q3 + 3 * IQR
+
+                # Filter outliers
+                outlier_mask = (
+                    (surface_data[metric_col] >= lower_bound) &
+                    (surface_data[metric_col] <= upper_bound) &
+                    (surface_data[metric_col].notna()) &
+                    (np.isfinite(surface_data[metric_col]))
+                )
+
+                original_count = len(surface_data)
+                surface_data = surface_data[outlier_mask].copy()
+                outliers_removed = original_count - len(surface_data)
+
+                if outliers_removed > 0:
+                    st.info(f"ℹ️ Removed {outliers_removed} outliers for cleaner visualization (using IQR method)")
+
+        # Additional validation: remove NaN and inf values
+        surface_data = surface_data[
+            surface_data[metric_col].notna() &
+            np.isfinite(surface_data[metric_col])
+        ].copy()
+
         # Create grid for interpolation
         strike_range = np.linspace(
             surface_data['strike_price'].min(),
@@ -100,25 +146,40 @@ with tab1:
             50
         )
 
-        # Select metric
-        metric_map = {
-            "Implied Volatility": 'iv',
-            "Vega": 'vega',
-            "Gamma": 'gamma'
-        }
-        metric_col = metric_map[surface_metric]
-
         # Create meshgrid
         X, Y = np.meshgrid(strike_range, ttm_range)
 
-        # Interpolate
-        Z = griddata(
-            (surface_data['strike_price'], surface_data['time_to_maturity']),
-            surface_data[metric_col],
-            (X, Y),
-            method='cubic',
-            fill_value=np.nan
-        )
+        # Interpolate with error handling
+        try:
+            Z = griddata(
+                (surface_data['strike_price'], surface_data['time_to_maturity']),
+                surface_data[metric_col],
+                (X, Y),
+                method='cubic',
+                fill_value=np.nan
+            )
+
+            # Replace any remaining NaN/inf with linear interpolation as fallback
+            if np.isnan(Z).any() or not np.isfinite(Z).all():
+                Z_linear = griddata(
+                    (surface_data['strike_price'], surface_data['time_to_maturity']),
+                    surface_data[metric_col],
+                    (X, Y),
+                    method='linear',
+                    fill_value=np.nan
+                )
+                # Fill cubic NaNs with linear
+                nan_mask = np.isnan(Z) | ~np.isfinite(Z)
+                Z[nan_mask] = Z_linear[nan_mask]
+        except Exception as e:
+            st.error(f"Interpolation failed: {e}. Trying linear method...")
+            Z = griddata(
+                (surface_data['strike_price'], surface_data['time_to_maturity']),
+                surface_data[metric_col],
+                (X, Y),
+                method='linear',
+                fill_value=np.nan
+            )
 
         # Create 3D surface plot
         fig_3d = go.Figure(data=[
@@ -141,18 +202,20 @@ with tab1:
             )
         ])
 
-        # Add current spot price marker
-        fig_3d.add_trace(
-            go.Scatter3d(
-                x=[spot_price] * len(ttm_range),
-                y=ttm_range,
-                z=[Z.max()] * len(ttm_range),
-                mode='lines',
-                line=dict(color='red', width=4),
-                name=f'Spot: ${spot_price:,.0f}',
-                hoverinfo='name'
+        # Add current spot price marker (only if Z is valid)
+        if np.isfinite(Z).any():
+            z_max_val = np.nanmax(Z[np.isfinite(Z)])
+            fig_3d.add_trace(
+                go.Scatter3d(
+                    x=[spot_price] * len(ttm_range),
+                    y=ttm_range,
+                    z=[z_max_val] * len(ttm_range),
+                    mode='lines',
+                    line=dict(color='red', width=4),
+                    name=f'Spot: ${spot_price:,.0f}',
+                    hoverinfo='name'
+                )
             )
-        )
 
         fig_3d.update_layout(
             scene=dict(
@@ -168,21 +231,45 @@ with tab1:
             paper_bgcolor='rgba(0,0,0,0)'
         )
 
-        st.plotly_chart(fig_3d, use_container_width=True)
+        st.plotly_chart(fig_3d, width="stretch")
 
-        # Display statistics
+        # Display statistics for the selected metric
         col1, col2, col3, col4 = st.columns(4)
-        with col1:
-            st.metric("Min IV", f"{surface_data['iv'].min()*100:.2f}%")
-        with col2:
-            st.metric("Max IV", f"{surface_data['iv'].max()*100:.2f}%")
-        with col3:
-            st.metric("Mean IV", f"{surface_data['iv'].mean()*100:.2f}%")
-        with col4:
-            st.metric("Std Dev", f"{surface_data['iv'].std()*100:.2f}%")
+
+        # Format based on metric type
+        if surface_metric == "Implied Volatility":
+            with col1:
+                st.metric("Min", f"{surface_data[metric_col].min()*100:.2f}%")
+            with col2:
+                st.metric("Max", f"{surface_data[metric_col].max()*100:.2f}%")
+            with col3:
+                st.metric("Mean", f"{surface_data[metric_col].mean()*100:.2f}%")
+            with col4:
+                st.metric("Std Dev", f"{surface_data[metric_col].std()*100:.2f}%")
+        else:
+            with col1:
+                st.metric(f"Min {surface_metric}", f"{surface_data[metric_col].min():.6f}")
+            with col2:
+                st.metric(f"Max {surface_metric}", f"{surface_data[metric_col].max():.6f}")
+            with col3:
+                st.metric(f"Mean {surface_metric}", f"{surface_data[metric_col].mean():.6f}")
+            with col4:
+                st.metric(f"Std Dev", f"{surface_data[metric_col].std():.6f}")
+
+        # Show data quality metrics
+        st.markdown("---")
+        quality_col1, quality_col2, quality_col3 = st.columns(3)
+        with quality_col1:
+            st.metric("Data Points Used", f"{len(surface_data):,}")
+        with quality_col2:
+            outlier_pct = (outliers_removed / original_count * 100) if outliers_removed > 0 else 0
+            st.metric("Outliers Removed", f"{outliers_removed} ({outlier_pct:.1f}%)")
+        with quality_col3:
+            valid_pct = np.isfinite(Z).sum() / Z.size * 100
+            st.metric("Surface Coverage", f"{valid_pct:.1f}%")
 
     else:
-        st.warning("Insufficient data for 3D surface plot")
+        st.warning("Insufficient data for 3D surface plot. Try selecting different options or date range.")
 
 # === TAB 2: IV SKEW ===
 with tab2:
@@ -320,7 +407,7 @@ with tab2:
         fig_skew.update_yaxes(title_text="Implied Volatility (%)", row=1, col=1)
         fig_skew.update_yaxes(title_text="Implied Volatility (%)", row=1, col=2)
 
-        st.plotly_chart(fig_skew, use_container_width=True)
+        st.plotly_chart(fig_skew, width="stretch")
 
         # Skew interpretation
         with st.expander("📖 Understanding IV Skew"):
@@ -407,7 +494,7 @@ with tab3:
             paper_bgcolor='rgba(0,0,0,0)'
         )
 
-        st.plotly_chart(fig_term, use_container_width=True)
+        st.plotly_chart(fig_term, width="stretch")
 
         # Term structure interpretation
         col1, col2 = st.columns(2)
@@ -535,7 +622,7 @@ with tab4:
         paper_bgcolor='rgba(0,0,0,0)'
     )
 
-    st.plotly_chart(fig_dist, use_container_width=True)
+    st.plotly_chart(fig_dist, width="stretch")
 
     # Volatility percentiles
     st.markdown("---")
@@ -551,7 +638,7 @@ with tab4:
         'Put IV': [f'{v:.2f}%' for v in put_percentiles]
     })
 
-    st.dataframe(percentile_df, use_container_width=True)
+    st.dataframe(percentile_df, width="stretch")
 
 st.markdown("---")
 st.info("""
